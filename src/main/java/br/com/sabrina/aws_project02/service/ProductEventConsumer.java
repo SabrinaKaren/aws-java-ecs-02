@@ -1,6 +1,8 @@
 package br.com.sabrina.aws_project02.service;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import javax.jms.JMSException;
 import javax.jms.TextMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,7 +13,9 @@ import org.springframework.jms.annotation.JmsListener;
 import org.springframework.stereotype.Service;
 import br.com.sabrina.aws_project02.model.Envelope;
 import br.com.sabrina.aws_project02.model.ProductEvent;
+import br.com.sabrina.aws_project02.model.ProductEventLog;
 import br.com.sabrina.aws_project02.model.SnsMessage;
+import br.com.sabrina.aws_project02.repository.ProductEventLogRepository;
 
 @Service
 public class ProductEventConsumer {
@@ -20,9 +24,12 @@ public class ProductEventConsumer {
 
     private ObjectMapper objectMapper;
 
+    private ProductEventLogRepository productEventLogRepository;
+
     @Autowired
-    public ProductEventConsumer(ObjectMapper objectMapper) {
+    public ProductEventConsumer(ObjectMapper objectMapper, ProductEventLogRepository productEventLogRepository) {
         this.objectMapper = objectMapper;
+        this.productEventLogRepository = productEventLogRepository;
     }
 
     @JmsListener(destination = "${aws.sqs.queue.product.events.name}")
@@ -35,6 +42,24 @@ public class ProductEventConsumer {
                 envelope.getEventType(),
                 productEvent.getProductId(),
                 snsMessage.getMessageId());
+
+        ProductEventLog productEventLog = buildProductEventLog(envelope, productEvent);
+        productEventLogRepository.save(productEventLog);
+    }
+
+    private ProductEventLog buildProductEventLog(Envelope envelope, ProductEvent productEvent) {
+        long timestamp = Instant.now().toEpochMilli();
+
+        ProductEventLog productEventLog = new ProductEventLog();
+        productEventLog.setPk(productEvent.getCode());
+        productEventLog.setSk(envelope.getEventType() + "-" + timestamp);
+        productEventLog.setEventType(envelope.getEventType());
+        productEventLog.setProductId(productEvent.getProductId());
+        productEventLog.setUsername(productEvent.getUsername());
+        productEventLog.setTimestamp(timestamp);
+        productEventLog.setTtl(Instant.now().plus(Duration.ofMinutes(10)).getEpochSecond());
+
+        return productEventLog;
     }
     
 }
